@@ -89,3 +89,4 @@ temp_whisperx/  # Ignore temporary chunk directory
 
 venv/
 videos/
+transcripts/
