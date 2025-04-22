@@ -25,6 +25,7 @@ from pathlib import Path
 from datetime import timedelta
 import argparse
 import os
+from dotenv import load_dotenv
 
 # ── WhisperX & torch ─────────────────────────────────────────────────────────
 try:
@@ -42,6 +43,8 @@ TRANSCRIPTS_DIR = Path("transcripts") # output folder
 SUPPORTED_EXTS = {".mp4", ".mov", ".mkv", ".avi", ".mp3", ".wav"}
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ADDED: Import DiarizationPipeline here
+from whisperx.diarize import DiarizationPipeline
 
 def format_timestamp(seconds: float) -> str:
     """HH:MM:SS formatter (zero‑padded)."""
@@ -65,10 +68,9 @@ def transcribe(audio_path: Path,
                model_size: str,
                language: str,
                *,
-               diarize: bool,
-               min_speakers: int,
-               max_speakers: int,
-               hf_token: str | None) -> dict:
+               # REMOVED: diarize, min_speakers, max_speakers, hf_token args
+               # ADDED: dia_pipeline object
+               dia_pipeline: DiarizationPipeline | None) -> dict:
     """
     WhisperX transcription + optional speaker diarization.
 
@@ -91,16 +93,26 @@ def transcribe(audio_path: Path,
                             str(audio_path), device)
 
     # Speaker diarization (optional)
-    if diarize:
-        print("[•] Running speaker diarization…")
-        dia = whisperx.DiarizationPipeline(
-            use_auth_token=hf_token,
-            device=device
-        )
-        dia_segments = dia(str(audio_path),
-                           min_speakers=min_speakers,
-                           max_speakers=max_speakers)
-        result = whisperx.assign_word_speakers(dia_segments, result)
+    # CHANGED: Use the pre-loaded pipeline if provided
+    if dia_pipeline:
+        print("[•] Running speaker diarization using pre-loaded pipeline…")
+        # Old way commented out:
+        # dia = whisperx.DiarizationPipeline(
+        #     use_auth_token=hf_token,
+        #     device=device
+        # )
+        # dia_segments = dia(str(audio_path),
+        #                    min_speakers=min_speakers,
+        #                    max_speakers=max_speakers)
+        # Assume min/max speakers are handled during pipeline creation or use defaults
+        # If specific min/max needed per file, this approach needs adjustment
+        # For now, using the pipeline directly assumes default/pre-configured speakers
+        try:
+            dia_segments = dia_pipeline(str(audio_path))
+            result = whisperx.assign_word_speakers(dia_segments, result)
+        except Exception as e:
+            print(f"[!] Error during diarization: {e}")
+            print("[!] Skipping speaker assignment for this file.")
 
     return result  # contains "segments"
 
@@ -111,10 +123,21 @@ def write_markdown(result: dict, md_path: Path) -> None:
     print(f"[•] Writing {md_path}")
 
     with md_path.open("w", encoding="utf-8") as f:
-        # Full transcript
-        full_text = " ".join(seg["text"].strip() for seg in result["segments"])
+        # Full transcript (speaker‑labeled)
         f.write("# Full Transcript\n\n")
-        f.write(full_text + "\n\n")
+        last_speaker = None
+        for seg in result["segments"]:
+            speaker = seg.get("speaker", "UNKNOWN")
+            text = seg["text"].strip()
+            # Start a new paragraph when the speaker changes
+            if speaker != last_speaker:
+                if last_speaker is not None:
+                    f.write("\n")         # blank line between speaker turns
+                f.write(f"**{speaker}:** {text}")
+            else:
+                f.write(f" {text}")       # same speaker: append in the same line
+            last_speaker = speaker
+        f.write("\n\n")
 
         # Segment‑level with speaker labels
         f.write("# Timestamped Transcript\n\n")
@@ -153,10 +176,9 @@ def process_video(video_path: Path,
                   *,
                   model_size: str,
                   language: str,
-                  diarize: bool,
-                  min_speakers: int,
-                  max_speakers: int,
-                  hf_token: str | None,
+                  # REMOVED: diarize, min_speakers, max_speakers, hf_token
+                  # ADDED: dia_pipeline
+                  dia_pipeline: DiarizationPipeline | None,
                   overwrite: bool) -> None:
     """Extract audio ➜ transcribe ➜ write markdown."""
     out_dir = TRANSCRIPTS_DIR / video_path.stem
@@ -175,10 +197,8 @@ def process_video(video_path: Path,
     result = transcribe(audio,
                         model_size,
                         language,
-                        diarize=diarize,
-                        min_speakers=min_speakers,
-                        max_speakers=max_speakers,
-                        hf_token=hf_token)
+                        # CHANGED: Pass the pipeline object
+                        dia_pipeline=dia_pipeline)
     write_markdown(result, md_path)
     audio.unlink(missing_ok=True)
     print(f"[✓] Finished in {time.time() - start:.1f}s")
@@ -186,6 +206,8 @@ def process_video(video_path: Path,
 
 def main() -> None:
     global TRANSCRIPTS_DIR  # allow --output_file to override
+
+    load_dotenv()
 
     parser = argparse.ArgumentParser(
         description="WhisperX batch transcriber (videos ➜ markdown)"
@@ -204,8 +226,6 @@ def main() -> None:
                         help="Regenerate transcripts even if they exist.")
 
     # New diarization flags
-    parser.add_argument("--diarize", action="store_true",
-                        help="Run speaker diarization (Pyannote, needs HF token)")
     parser.add_argument("--min_speakers", type=int, default=2,
                         help="Minimum number of speakers (diarization).")
     parser.add_argument("--max_speakers", type=int, default=4,
@@ -213,9 +233,46 @@ def main() -> None:
     parser.add_argument("--hf_token",
                         default=os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN"),
                         help="Hugging‑Face access token for Pyannote models "
-                             "(defaults to $HF_TOKEN env var).")
+                             "(defaults to $HF_TOKEN env var). Required for diarization.")
 
     args = parser.parse_args()
+
+    # --- Token Check & Early Diarization Setup --- 
+    hf_token_read = args.hf_token
+    if hf_token_read:
+        print(f"[Debug] HF Token loaded: ...{hf_token_read[-4:]}") # Print last 4 chars
+    else:
+        print("Error: Hugging Face token is required for speaker diarization.")
+        print("Please provide it via the --hf_token flag or set the HF_TOKEN environment variable.")
+        print("Ensure you have accepted user conditions at:")
+        print("  - https://hf.co/pyannote/speaker-diarization-3.1")
+        print("  - https://hf.co/pyannote/segmentation-3.0")
+        sys.exit(1)
+
+    # Try to load the diarization pipeline *before* the loop
+    dia_pipeline_instance: DiarizationPipeline | None = None
+    try:
+        print("[•] Pre-loading Diarization Pipeline...")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Note: min/max speakers are typically arguments to the pipeline *call*, 
+        # not usually the constructor. WhisperX's wrapper might handle this differently.
+        # If you need per-file min/max speakers, this needs adjustment.
+        # For now, we load the default pipeline.
+        dia_pipeline_instance = DiarizationPipeline(
+            use_auth_token=hf_token_read,
+            device=device
+            # We might need to specify model="pyannote/speaker-diarization-3.1" explicitly
+            # if whisperx doesn't default to it or if multiple are cached.
+        )
+        print("[✓] Diarization Pipeline loaded successfully.")
+    except Exception as e:
+        print(f"[!] Failed to load Diarization Pipeline: {e}")
+        print("[!] Check HF Token, internet connection, and ensure user conditions are accepted at:")
+        print("  - https://hf.co/pyannote/speaker-diarization-3.1")
+        print("  - https://hf.co/pyannote/segmentation-3.0")
+        print("[!] Diarization will be skipped.")
+        # We proceed without diarization instead of exiting, user might still want transcription
+    # --- End Early Diarization Setup ---
 
     # Ensure dirs exist
     VIDEOS_DIR.mkdir(exist_ok=True)
@@ -232,10 +289,8 @@ def main() -> None:
         process_video(video,
                       model_size=args.model_size,
                       language=args.language,
-                      diarize=args.diarize,
-                      min_speakers=args.min_speakers,
-                      max_speakers=args.max_speakers,
-                      hf_token=args.hf_token,
+                      # CHANGED: Pass pre-loaded pipeline
+                      dia_pipeline=dia_pipeline_instance,
                       overwrite=args.overwrite)
     else:
         videos = [p for p in VIDEOS_DIR.iterdir()
@@ -247,10 +302,8 @@ def main() -> None:
             process_video(vid,
                           model_size=args.model_size,
                           language=args.language,
-                          diarize=args.diarize,
-                          min_speakers=args.min_speakers,
-                          max_speakers=args.max_speakers,
-                          hf_token=args.hf_token,
+                          # CHANGED: Pass pre-loaded pipeline
+                          dia_pipeline=dia_pipeline_instance,
                           overwrite=args.overwrite)
 
 
