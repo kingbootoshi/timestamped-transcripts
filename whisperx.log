@@ -44,3 +44,10 @@
 {"time": "2025-04-29 11:11:36,804", "lvl": "INFO", "src": "whisperx_gui.transcriber.core", "msg": "Loading WhisperX medium model on cpu"}
 {"time": "2025-04-29 11:11:38,409", "lvl": "INFO", "src": "pytorch_lightning.utilities.migration.utils", "msg": "Lightning automatically upgraded your loaded checkpoint from v1.5.4 to v2.5.1. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint venv/lib/python3.12/site-packages/whisperx/assets/pytorch_model.bin`"}
 {"time": "2025-04-29 11:11:38,416", "lvl": "INFO", "src": "__main__", "msg": "Transcribing audio"}
+{"time": "2025-04-29 11:12:02,336", "lvl": "INFO", "src": "__main__", "msg": "Aligning words with audio"}
+{"time": "2025-04-29 11:12:04,379", "lvl": "INFO", "src": "__main__", "msg": "Identifying speakers"}
+{"time": "2025-04-29 11:12:04,379", "lvl": "INFO", "src": "whisperx_gui.transcriber.core", "msg": "Running speaker diarization"}
+{"time": "2025-04-29 11:13:08,382", "lvl": "INFO", "src": "__main__", "msg": "Writing transcript"}
+{"time": "2025-04-29 11:13:08,382", "lvl": "INFO", "src": "whisperx_gui.transcriber.core", "msg": "Writing transcript to transcripts/Saint Short 7.md"}
+{"time": "2025-04-29 11:13:08,382", "lvl": "INFO", "src": "whisperx_gui.transcriber.core", "msg": "Finished in 91.9s"}
+{"time": "2025-04-29 11:13:08,382", "lvl": "INFO", "src": "__main__", "msg": "Completed in 91.9s"}
