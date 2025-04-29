@@ -13,7 +13,7 @@ New flags:
 Requirements:
 - whisperx (pip install git+https://github.com/m-bain/whisperX.git)
 - ffmpeg
-- pyannote.audio >= 3.x  (already in requirements.txt)
+- pyannote.audio >= 3.x  (already in requirements.txt)
 """
 
 from __future__ import annotations
@@ -25,15 +25,25 @@ from pathlib import Path
 from datetime import timedelta
 import argparse
 import os
+import logging
 from dotenv import load_dotenv
+
+# Import the new logging configuration
+from whisperx_gui.logging_config import setup_logging
+
+# Configure logging based on environment variables
+log_level = os.environ.get("LOG_LEVEL", "INFO")
+setup_logging(log_level=log_level, where="cli")
+
+# Get a logger for this module
+logger = logging.getLogger(__name__)
 
 # ── WhisperX & torch ─────────────────────────────────────────────────────────
 try:
     import whisperx
     import torch
 except ImportError:
-    print("WhisperX not installed. Install with:\n"
-          "pip install git+https://github.com/m-bain/whisperX.git")
+    logger.error("WhisperX not installed. Install with: pip install git+https://github.com/m-bain/whisperX.git")
     sys.exit(1)
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -52,8 +62,9 @@ def format_timestamp(seconds: float) -> str:
 
 
 def extract_audio(video_path: Path, audio_out: Path | None = None) -> Path:
-    """Extract mono 16 kHz WAV using ffmpeg."""
+    """Extract mono 16 kHz WAV using ffmpeg."""
     audio_out = audio_out or video_path.with_suffix(".wav")
+    logger.info(f"Extracting audio from {video_path} to {audio_out}")
     cmd = [
         "ffmpeg", "-i", str(video_path),
         "-vn", "-acodec", "pcm_s16le",
@@ -78,24 +89,29 @@ def transcribe(audio_path: Path,
     but with an extra `speaker` field if diarization was requested.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"[•] Loading WhisperX {model_size} on {device}")
+    logger.info(f"Loading WhisperX {model_size} on {device}")
     model = whisperx.load_model(
         model_size,
         device,
         compute_type="float16" if device == "cuda" else "int8"
     )
 
+    logger.debug("Starting transcription")
     result = model.transcribe(str(audio_path), language=language, batch_size=16)
+    logger.debug("Transcription complete")
 
     # Word‑level alignment
+    logger.debug(f"Loading alignment model for language: {language}")
     model_a, metadata = whisperx.load_align_model(language_code=language, device=device)
+    logger.debug("Starting word alignment")
     result = whisperx.align(result["segments"], model_a, metadata,
-                            str(audio_path), device)
+                        str(audio_path), device)
+    logger.debug("Word alignment complete")
 
     # Speaker diarization (optional)
     # CHANGED: Use the pre-loaded pipeline if provided
     if dia_pipeline:
-        print("[•] Running speaker diarization using pre-loaded pipeline…")
+        logger.info("Running speaker diarization using pre-loaded pipeline")
         # Old way commented out:
         # dia = whisperx.DiarizationPipeline(
         #     use_auth_token=hf_token,
@@ -110,9 +126,10 @@ def transcribe(audio_path: Path,
         try:
             dia_segments = dia_pipeline(str(audio_path))
             result = whisperx.assign_word_speakers(dia_segments, result)
+            logger.debug("Speaker diarization and assignment complete")
         except Exception as e:
-            print(f"[!] Error during diarization: {e}")
-            print("[!] Skipping speaker assignment for this file.")
+            logger.error(f"Error during diarization: {e}")
+            logger.warning("Skipping speaker assignment for this file")
 
     return result  # contains "segments"
 
@@ -120,7 +137,7 @@ def transcribe(audio_path: Path,
 def write_markdown(result: dict, md_path: Path) -> None:
     """Write full transcript, segments, and word timestamps (with speakers)."""
     md_path.parent.mkdir(parents=True, exist_ok=True)
-    print(f"[•] Writing {md_path}")
+    logger.info(f"Writing transcript to {md_path}")
 
     with md_path.open("w", encoding="utf-8") as f:
         # Full transcript (speaker‑labeled)
@@ -190,13 +207,13 @@ def process_video(video_path: Path,
     out_dir = TRANSCRIPTS_DIR / video_path.stem
     md_path = out_dir / f"{video_path.stem}.md"
     if md_path.exists() and not overwrite:
-        print(f"[skip] {video_path.name} (already transcribed)")
+        logger.info(f"Skipping {video_path.name} (already transcribed)")
         return
 
-    print(f"\n=== {video_path.name} ===")
+    logger.info(f"Processing video: {video_path.name}")
     start = time.time()
     dur = duration_seconds(video_path)
-    print(f"[•] Duration: {format_timestamp(dur)}")
+    logger.info(f"Duration: {format_timestamp(dur)}")
 
     # Extract + transcribe
     audio = extract_audio(video_path)
@@ -207,13 +224,16 @@ def process_video(video_path: Path,
                         dia_pipeline=dia_pipeline)
     write_markdown(result, md_path)
     audio.unlink(missing_ok=True)
-    print(f"[✓] Finished in {time.time() - start:.1f}s")
+    processing_time = time.time() - start
+    logger.info(f"Finished processing {video_path.name} in {processing_time:.1f}s")
 
 
 def main() -> None:
     global TRANSCRIPTS_DIR  # allow --output_file to override
 
     load_dotenv()
+    
+    logger.debug("Starting WhisperX batch transcriber")
 
     parser = argparse.ArgumentParser(
         description="WhisperX batch transcriber (videos ➜ markdown)"
@@ -246,19 +266,19 @@ def main() -> None:
     # --- Token Check & Early Diarization Setup --- 
     hf_token_read = args.hf_token
     if hf_token_read:
-        print(f"[Debug] HF Token loaded: ...{hf_token_read[-4:]}") # Print last 4 chars
+        logger.debug(f"HF Token loaded: ...{hf_token_read[-4:]}")  # Print last 4 chars
     else:
-        print("Error: Hugging Face token is required for speaker diarization.")
-        print("Please provide it via the --hf_token flag or set the HF_TOKEN environment variable.")
-        print("Ensure you have accepted user conditions at:")
-        print("  - https://hf.co/pyannote/speaker-diarization-3.1")
-        print("  - https://hf.co/pyannote/segmentation-3.0")
+        logger.error("Hugging Face token is required for speaker diarization")
+        logger.error("Please provide it via the --hf_token flag or set the HF_TOKEN environment variable")
+        logger.error("Ensure you have accepted user conditions at:")
+        logger.error("  - https://hf.co/pyannote/speaker-diarization-3.1")
+        logger.error("  - https://hf.co/pyannote/segmentation-3.0")
         sys.exit(1)
 
     # Try to load the diarization pipeline *before* the loop
     dia_pipeline_instance: DiarizationPipeline | None = None
     try:
-        print("[•] Pre-loading Diarization Pipeline...")
+        logger.info("Pre-loading Diarization Pipeline")
         device = "cuda" if torch.cuda.is_available() else "cpu"
         # Note: min/max speakers are typically arguments to the pipeline *call*, 
         # not usually the constructor. WhisperX's wrapper might handle this differently.
@@ -270,13 +290,13 @@ def main() -> None:
             # We might need to specify model="pyannote/speaker-diarization-3.1" explicitly
             # if whisperx doesn't default to it or if multiple are cached.
         )
-        print("[✓] Diarization Pipeline loaded successfully.")
+        logger.info("Diarization Pipeline loaded successfully")
     except Exception as e:
-        print(f"[!] Failed to load Diarization Pipeline: {e}")
-        print("[!] Check HF Token, internet connection, and ensure user conditions are accepted at:")
-        print("  - https://hf.co/pyannote/speaker-diarization-3.1")
-        print("  - https://hf.co/pyannote/segmentation-3.0")
-        print("[!] Diarization will be skipped.")
+        logger.error(f"Failed to load Diarization Pipeline: {e}")
+        logger.error("Check HF Token, internet connection, and ensure user conditions are accepted at:")
+        logger.error("  - https://hf.co/pyannote/speaker-diarization-3.1")
+        logger.error("  - https://hf.co/pyannote/segmentation-3.0")
+        logger.warning("Diarization will be skipped")
         # We proceed without diarization instead of exiting, user might still want transcription
     # --- End Early Diarization Setup ---
 
@@ -287,7 +307,7 @@ def main() -> None:
     if args.input_video:
         video = Path(args.input_video).expanduser()
         if not video.is_file():
-            print(f"Input file '{video}' not found.")
+            logger.error(f"Input file '{video}' not found")
             sys.exit(1)
         if args.output_file:
             TRANSCRIPTS_DIR = Path(args.output_file).expanduser().parent
@@ -302,7 +322,7 @@ def main() -> None:
         videos = [p for p in VIDEOS_DIR.iterdir()
                   if p.suffix.lower() in SUPPORTED_EXTS]
         if not videos:
-            print("No videos found in ./videos – add some and rerun.")
+            logger.warning("No videos found in ./videos – add some and rerun")
             return
         for vid in videos:
             process_video(vid,

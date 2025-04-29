@@ -55,6 +55,26 @@ The markdown starts with the **complete transcript text** (with speaker labels i
     mkdir -p videos transcripts
     ```
 
+7.  **(Optional) Development Setup**
+
+    For development, you can set up pre-commit hooks for code formatting and linting:
+    
+    ```bash
+    pip install pre-commit
+    pre-commit install
+    ```
+    
+    This will ensure your code is formatted using black, isort, and checked with ruff before committing.
+
+## Environment Variables
+
+The following environment variables can be used to configure WhisperX:
+
+- `HF_TOKEN`: Hugging Face token for speaker diarization (required for diarization)
+- `LOG_LEVEL`: Set the logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  - Use `LOG_LEVEL=DEBUG` to see detailed model loading and processing information
+  - Default is INFO
+
 ## Usage
 
 ### Batch mode (recommended)

@@ -1,0 +1,26 @@
+{"time": "2025-04-29 09:05:37,808", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint save hook for _speechbrain_save"}
+{"time": "2025-04-29 09:05:37,808", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint load hook for _speechbrain_load"}
+{"time": "2025-04-29 09:05:37,808", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint save hook for save"}
+{"time": "2025-04-29 09:05:37,809", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint load hook for load"}
+{"time": "2025-04-29 09:05:37,864", "lvl": "INFO", "src": "speechbrain.utils.quirks", "msg": "Applied quirks (see `speechbrain.utils.quirks`): [disable_jit_profiling, allow_tf32]"}
+{"time": "2025-04-29 09:05:37,864", "lvl": "INFO", "src": "speechbrain.utils.quirks", "msg": "Excluded quirks specified by the `SB_DISABLE_QUIRKS` environment (comma-separated list): []"}
+{"time": "2025-04-29 09:05:37,864", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint save hook for _save"}
+{"time": "2025-04-29 09:05:37,864", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint load hook for _recover"}
+{"time": "2025-04-29 10:10:50,077", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint save hook for _speechbrain_save"}
+{"time": "2025-04-29 10:10:50,077", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint load hook for _speechbrain_load"}
+{"time": "2025-04-29 10:10:50,078", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint save hook for save"}
+{"time": "2025-04-29 10:10:50,078", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint load hook for load"}
+{"time": "2025-04-29 10:10:50,128", "lvl": "INFO", "src": "speechbrain.utils.quirks", "msg": "Applied quirks (see `speechbrain.utils.quirks`): [allow_tf32, disable_jit_profiling]"}
+{"time": "2025-04-29 10:10:50,128", "lvl": "INFO", "src": "speechbrain.utils.quirks", "msg": "Excluded quirks specified by the `SB_DISABLE_QUIRKS` environment (comma-separated list): []"}
+{"time": "2025-04-29 10:10:50,128", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint save hook for _save"}
+{"time": "2025-04-29 10:10:50,128", "lvl": "DEBUG", "src": "speechbrain.utils.checkpoints", "msg": "Registered checkpoint load hook for _recover"}
+{"time": "2025-04-29 10:10:50,199", "lvl": "INFO", "src": "__main__", "msg": "Pre-loading Diarization Pipeline"}
+{"time": "2025-04-29 10:10:51,164", "lvl": "INFO", "src": "__main__", "msg": "Diarization Pipeline loaded successfully"}
+{"time": "2025-04-29 10:10:51,164", "lvl": "INFO", "src": "__main__", "msg": "Processing video: Saint Short 7.mp4"}
+{"time": "2025-04-29 10:10:51,431", "lvl": "INFO", "src": "__main__", "msg": "Duration: 0:01:18"}
+{"time": "2025-04-29 10:10:51,432", "lvl": "INFO", "src": "__main__", "msg": "Extracting audio from videos/Saint Short 7.mp4 to videos/Saint Short 7.wav"}
+{"time": "2025-04-29 10:10:51,608", "lvl": "INFO", "src": "__main__", "msg": "Loading WhisperX medium on cpu"}
+{"time": "2025-04-29 10:10:53,028", "lvl": "INFO", "src": "pytorch_lightning.utilities.migration.utils", "msg": "Lightning automatically upgraded your loaded checkpoint from v1.5.4 to v2.5.1. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint venv/lib/python3.12/site-packages/whisperx/assets/pytorch_model.bin`"}
+{"time": "2025-04-29 10:11:18,241", "lvl": "INFO", "src": "__main__", "msg": "Running speaker diarization using pre-loaded pipeline"}
+{"time": "2025-04-29 10:12:22,648", "lvl": "INFO", "src": "__main__", "msg": "Writing transcript to transcripts/Saint Short 7/Saint Short 7.md"}
+{"time": "2025-04-29 10:12:22,649", "lvl": "INFO", "src": "__main__", "msg": "Finished processing Saint Short 7.mp4 in 91.5s"}

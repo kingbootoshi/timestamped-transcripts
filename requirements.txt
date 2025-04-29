@@ -101,3 +101,9 @@ urllib3==2.3.0
 whisperx @ git+https://github.com/m-bain/whisperX.git@f10dbf6ab1717e84db7733df9c0b21658ee68f9b
 yarl==1.19.0
 python-dotenv>=0.21.0
+
+# Development dependencies
+black>=23.3.0
+isort>=5.12.0
+ruff>=0.0.267
+pre-commit>=3.3.2
