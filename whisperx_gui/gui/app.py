@@ -3,7 +3,14 @@ import os
 import queue
 import multiprocessing as mp
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Dict
+
+# Import from our transcriber module
+from whisperx_gui.transcriber import (
+    transcribe, 
+    build_dia_pipeline, 
+    ProgressEvent
+)
 
 # We're not implementing actual Qt components as per PRD, just structure
 logger = logging.getLogger(__name__)
@@ -25,8 +32,15 @@ class WhisperXGUI:
         from whisperx_gui.logging_config import setup_logging
         setup_logging(log_level=log_level, where="gui")
         
+        # Configuration
+        self.output_dir = Path("transcripts")
+        self.output_dir.mkdir(exist_ok=True)
+        
         # Set up worker processes
         self._setup_worker()
+        
+        # Track diarization pipeline
+        self.dia_pipeline = None
         
     def _setup_worker(self) -> None:
         """Set up worker process and communication queues."""
@@ -66,65 +80,112 @@ class WhisperXGUI:
         # For now, we just log that we received a worker message
         pass
         
-    def initialize_transcriber(self, model_size: str, language: str, hf_token: str) -> None:
+    def ui_progress_callback(self, event: ProgressEvent) -> None:
         """
-        Initialize the transcription worker with model parameters.
+        Handle progress events from the transcription process.
+        
+        In a real GUI, this would update a progress bar and status message.
         
         Args:
-            model_size: WhisperX model size
-            language: Language code
-            hf_token: Hugging Face token
+            event: The progress event to handle
         """
-        self.logger.info(f"Initializing transcriber with model_size={model_size}, language={language}")
-        
-        # Send initialization task to worker
-        self.task_queue.put({
-            "type": "initialize",
-            "model_size": model_size,
-            "language": language,
-            "hf_token": hf_token
-        })
-        
-        # Wait for result
-        result = self.result_queue.get()
-        if result["status"] != "initialized":
-            self.logger.error(f"Failed to initialize transcriber: {result.get('error', 'Unknown error')}")
-            # In a real GUI, we would show an error dialog
+        # In a real application, this would update the UI
+        if event["step"] == "error":
+            self.logger.error(event["msg"] if event["msg"] else "Error during transcription")
+        elif event["step"] == "done":
+            self.logger.info(event["msg"] if event["msg"] else "Transcription complete")
+        elif event["msg"]:
+            self.logger.info(event["msg"])
             
-    def transcribe_file(self, file_path: Path, min_speakers: int = 2, max_speakers: int = 4) -> None:
+    def initialize_diarization(self, hf_token: str) -> bool:
         """
-        Request transcription of a file.
+        Initialize the diarization pipeline.
+        
+        Args:
+            hf_token: Hugging Face token
+            
+        Returns:
+            True if initialization was successful, False otherwise
+        """
+        self.logger.info("Initializing diarization pipeline")
+        
+        try:
+            # Use our transcriber module's function
+            self.dia_pipeline = build_dia_pipeline(hf_token)
+            self.logger.info("Diarization pipeline initialized successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to initialize diarization pipeline: {e}")
+            return False
+            
+    def transcribe_file(
+        self, 
+        file_path: Path, 
+        output_dir: Optional[Path] = None,
+        model_size: str = "medium",
+        language: str = "en",
+        hf_token: Optional[str] = None,
+        min_speakers: int = 2, 
+        max_speakers: int = 4,
+        overwrite: bool = False
+    ) -> None:
+        """
+        Transcribe a media file.
         
         Args:
             file_path: Path to the file to transcribe
+            output_dir: Optional custom output directory
+            model_size: WhisperX model size
+            language: Language code
+            hf_token: Hugging Face token for diarization
             min_speakers: Minimum number of speakers
             max_speakers: Maximum number of speakers
+            overwrite: Whether to overwrite existing transcripts
         """
-        self.logger.info(f"Requesting transcription of {file_path}")
+        self.logger.info(f"Transcribing file: {file_path}")
         
-        # In a real GUI, we would update the UI to show progress
+        # Use provided output dir or default
+        out_dir = output_dir or self.output_dir
         
-        # Send transcription task to worker
-        self.task_queue.put({
-            "type": "transcribe",
-            "audio_path": str(file_path),
-            "min_speakers": min_speakers,
-            "max_speakers": max_speakers
-        })
+        # Initialize diarization pipeline if not already done
+        if hf_token and not self.dia_pipeline:
+            self.initialize_diarization(hf_token)
         
-        # In a real application, we would have a callback or polling mechanism
-        # to handle the result when it arrives, rather than blocking
+        # Launch transcription in the worker process
+        # In a real GUI application, this would be non-blocking
+        # For simplicity in this example, we're making a blocking call
+        try:
+            # Use our transcriber module directly
+            result = transcribe(
+                file_path,
+                out_dir,
+                model_size=model_size,
+                language=language,
+                hf_token=hf_token,
+                min_speakers=min_speakers,
+                max_speakers=max_speakers,
+                overwrite=overwrite,
+                progress=self.ui_progress_callback,
+                dia_pipeline=self.dia_pipeline
+            )
+            
+            self.handle_transcription_result(result)
+        except Exception as e:
+            self.logger.error(f"Error transcribing file: {e}")
         
     def handle_transcription_result(self, result: Dict[str, Any]) -> None:
         """
-        Handle a transcription result from the worker.
+        Handle a transcription result.
         
         Args:
             result: The transcription result dictionary
         """
-        if result["status"] == "success":
+        if result.get("status") == "success":
             self.logger.info(f"Transcription completed in {result.get('processing_time', 0):.1f}s")
+            self.logger.info(f"Output written to: {result.get('output_path')}")
             # In a real GUI, we would update the UI with the transcription
+        elif result.get("status") == "skipped":
+            self.logger.info(f"Transcription skipped: {result.get('path')}")
         else:
             self.logger.error(f"Transcription failed: {result.get('error', 'Unknown error')}")
             # In a real GUI, we would show an error dialog

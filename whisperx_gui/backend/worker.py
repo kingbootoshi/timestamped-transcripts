@@ -7,7 +7,11 @@ import time
 from typing import Dict, Any, Optional, Callable
 
 from whisperx_gui.logging_config import setup_logging
-from whisperx_gui.transcriber.core import TranscriptionManager
+from whisperx_gui.transcriber import (
+    transcribe, 
+    build_dia_pipeline, 
+    ProgressEvent
+)
 
 class TranscriptionWorker:
     """
@@ -32,26 +36,56 @@ class TranscriptionWorker:
         self.task_queue = task_queue
         self.result_queue = result_queue
         self.log_queue = log_queue
-        self.transcription_manager = None
+        self.dia_pipeline = None
         
     def setup_logging(self) -> None:
         """Configure worker-specific logging that forwards to main process."""
         log_level = os.environ.get("LOG_LEVEL", "INFO")
         self.log_queue = setup_logging(log_level=log_level, where="worker")
         
-    def initialize_transcriber(self, model_size: str, language: str, hf_token: str) -> None:
+    def initialize_diarization(self, hf_token: str) -> None:
         """
-        Initialize the transcription manager with the specified parameters.
+        Initialize the diarization pipeline.
         
         Args:
-            model_size: WhisperX model size
-            language: Language code
             hf_token: Hugging Face token
+            
+        Returns:
+            True if successful, False otherwise
         """
         logger = logging.getLogger(__name__)
-        logger.info(f"Initializing transcriber with model_size={model_size}, language={language}")
-        self.transcription_manager = TranscriptionManager(model_size, language)
-        self.transcription_manager.load_models(hf_token)
+        logger.info("Initializing diarization pipeline")
+        
+        try:
+            # Use the transcriber's function to build the pipeline
+            self.dia_pipeline = build_dia_pipeline(hf_token)
+            logger.info("Diarization pipeline initialized successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize diarization pipeline: {e}")
+            return False
+            
+    def progress_callback(self, event: ProgressEvent) -> None:
+        """
+        Handle progress events from transcription.
+        
+        This callback is used to log progress and could be extended to
+        send progress updates back to the main process.
+        
+        Args:
+            event: Progress event data
+        """
+        logger = logging.getLogger(__name__)
+        
+        # Log the event
+        if event["msg"]:
+            if event["step"] == "error":
+                logger.error(event["msg"])
+            else:
+                logger.info(event["msg"])
+        
+        # A real implementation would send progress updates back to the main process
+        # through a dedicated queue
         
     def process_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -66,49 +100,48 @@ class TranscriptionWorker:
         logger = logging.getLogger(__name__)
         
         task_type = task.get("type")
-        if task_type == "initialize":
-            logger.info("Processing initialization task")
-            self.initialize_transcriber(
-                task.get("model_size", "medium"),
-                task.get("language", "en"),
-                task.get("hf_token", "")
-            )
-            return {"status": "initialized"}
+        if task_type == "initialize_diarization":
+            logger.info("Initializing diarization pipeline")
+            success = self.initialize_diarization(task.get("hf_token", ""))
+            return {
+                "status": "initialized" if success else "error",
+                "error": None if success else "Failed to initialize diarization pipeline"
+            }
             
         elif task_type == "transcribe":
-            if not self.transcription_manager:
-                return {"status": "error", "error": "Transcriber not initialized"}
+            media_path = Path(task.get("media_path", ""))
+            if not media_path.exists():
+                return {"status": "error", "error": f"Media file not found: {media_path}"}
                 
-            audio_path = Path(task.get("audio_path", ""))
-            if not audio_path.exists():
-                return {"status": "error", "error": f"Audio file not found: {audio_path}"}
-                
-            logger.info(f"Processing transcription task for {audio_path}")
-            start_time = time.time()
+            output_dir = Path(task.get("output_dir", "transcripts"))
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            logger.info(f"Processing transcription task for {media_path}")
             
             try:
-                result = self.transcription_manager.transcribe_audio(
-                    audio_path,
+                # Use the transcriber's function directly
+                result = transcribe(
+                    media_path,
+                    output_dir,
+                    model_size=task.get("model_size", "medium"),
+                    language=task.get("language", "en"),
+                    hf_token=task.get("hf_token"),
                     min_speakers=task.get("min_speakers", 2),
-                    max_speakers=task.get("max_speakers", 4)
+                    max_speakers=task.get("max_speakers", 4),
+                    overwrite=task.get("overwrite", False),
+                    progress=self.progress_callback,
+                    dia_pipeline=self.dia_pipeline
                 )
                 
-                processing_time = time.time() - start_time
-                logger.info(f"Transcription completed in {processing_time:.1f}s")
-                
-                return {
-                    "status": "success",
-                    "result": result,
-                    "processing_time": processing_time,
-                    "audio_path": str(audio_path)
-                }
+                # The result already includes status and processing_time
+                return result
                 
             except Exception as e:
                 logger.error(f"Error in transcription: {e}")
                 return {
                     "status": "error",
                     "error": str(e),
-                    "audio_path": str(audio_path)
+                    "media_path": str(media_path)
                 }
                 
         else:
