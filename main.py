@@ -148,12 +148,18 @@ def write_markdown(result: dict, md_path: Path) -> None:
             f.write(f"## Segment {idx}: [{start} - {end}] ({speaker})\n\n")
             f.write(seg["text"].strip() + "\n\n")
 
-            # Word timestamps
+            # Word timestamps - Modified to show speaker once
             if seg.get("words"):
-                f.write("### Word‑level timestamps\n\n")
+                f.write("### Word-level timestamps\n\n")
+                current_speaker = None
                 for w in seg["words"]:
                     w_speaker = w.get("speaker", speaker)
-                    f.write(f"- {w_speaker}: {w['word'].strip()} @ {format_timestamp(w['start'])}\n")
+                    # Only write speaker when it changes
+                    if w_speaker != current_speaker:
+                        f.write(f"\n**{w_speaker}:**\n")  # New speaker header
+                        current_speaker = w_speaker
+                    # Just timestamp and word for subsequent entries
+                    f.write(f"- {w['word'].strip()} @ {format_timestamp(w['start'])}\n")
                 f.write("\n")
 
         # Summary
