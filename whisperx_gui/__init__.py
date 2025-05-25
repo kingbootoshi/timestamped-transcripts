@@ -1,1 +1,0 @@
-# WhisperX GUI package

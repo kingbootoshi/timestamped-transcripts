@@ -1,1 +1,0 @@
-# GUI components using Qt
